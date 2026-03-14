@@ -130,7 +130,8 @@ namespace DeenProof.Api.Controllers
                 QuickReplyEn = doubt.QuickReplyEn,
                 Status = doubt.Status.ToString(),
                 CreatedAt = doubt.CreatedAt,
-                // ✅ إصلاح محتمل: تأكد من أن Author ليس null
+                Category = doubt.Category,
+                Slug = doubt.Slug,
                 AuthorName = doubt.Author?.Name ?? "مستخدم محذوف",
                 DetailedRebuttal = doubt.DetailedRebuttal.Select(c => new ClaimDto
                 {

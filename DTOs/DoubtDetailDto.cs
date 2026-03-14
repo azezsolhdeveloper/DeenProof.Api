@@ -26,6 +26,8 @@ public class CommentDto
     public string AuthorName { get; set; } = string.Empty;
 }
 
+// DeenProof.Api/DTOs/DoubtDetailDto.cs
+
 public class DoubtDetailDto
 {
     public int Id { get; set; }
@@ -38,7 +40,13 @@ public class DoubtDetailDto
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public string AuthorName { get; set; } = string.Empty;
+
+    // --- ✅✅✅ أضف هذين السطرين المفقودين هنا ✅✅✅ ---
+    public string Category { get; set; } = string.Empty;
+    public string Slug { get; set; } = string.Empty;
+
     public List<ClaimDto> DetailedRebuttal { get; set; } = new();
     public List<SourceDto> MainSources { get; set; } = new();
     public List<CommentDto> Comments { get; set; } = new();
 }
+
