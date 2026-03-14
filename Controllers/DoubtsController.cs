@@ -309,7 +309,62 @@ namespace DeenProof.Api.Controllers
             return Ok(resultDto);
             // --- نهاية الإصلاح ---
         }
+        [HttpPut("claims/{claimId}")]
+        public async Task<IActionResult> UpdateClaim(int claimId, [FromBody] ClaimDto claimDto)
+        {
+            // 1. ابحث عن الادعاء في قاعدة البيانات، وقم بتضمين مصادره
+            var claim = await _context.Claims
+                .Include(c => c.Sources)
+                .FirstOrDefaultAsync(c => c.Id == claimId);
 
+            if (claim == null)
+            {
+                return NotFound(new { message = "Claim not found." });
+            }
+
+            // 2. قم بتحديث الخصائص الأساسية للادعاء
+            claim.ClaimAr = claimDto.ClaimAr;
+            claim.ClaimEn = claimDto.ClaimEn;
+            claim.ResponseAr = claimDto.ResponseAr;
+            claim.ResponseEn = claimDto.ResponseEn;
+
+            // 3. قم بتحديث المصادر المرتبطة بهذا الادعاء (منطق معقد ومهم)
+            if (claimDto.Sources != null)
+            {
+                // حذف المصادر القديمة التي لم تعد موجودة في الطلب الجديد
+                var sourcesToDelete = claim.Sources
+                    .Where(s => !claimDto.Sources.Any(dto => dto.Id == s.Id && dto.Id != 0))
+                    .ToList();
+                _context.Sources.RemoveRange(sourcesToDelete);
+
+                // تحديث المصادر الموجودة وإضافة الجديدة
+                foreach (var sourceDto in claimDto.Sources)
+                {
+                    var existingSource = claim.Sources.FirstOrDefault(s => s.Id == sourceDto.Id && s.Id != 0);
+                    if (existingSource != null)
+                    {
+                        // تحديث مصدر موجود
+                        existingSource.Text = sourceDto.Text;
+                        existingSource.Url = sourceDto.Url;
+                    }
+                    else
+                    {
+                        // إضافة مصدر جديد
+                        claim.Sources.Add(new Source
+                        {
+                            Text = sourceDto.Text,
+                            Url = sourceDto.Url
+                        });
+                    }
+                }
+            }
+
+            // 4. احفظ كل التغييرات في قاعدة البيانات
+            await _context.SaveChangesAsync();
+
+            // 5. أرجع استجابة "لا يوجد محتوى" للإشارة إلى النجاح
+            return NoContent();
+        }
         // DELETE: api/doubts/claims/5  <-- المسار أبسط وأكثر منطقية
         [HttpDelete("claims/{claimId}")]
         public async Task<IActionResult> DeleteClaim(int claimId)
