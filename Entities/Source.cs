@@ -8,7 +8,11 @@ public class Source
     public int Id { get; set; }
 
     [Required]
-    public string Text { get; set; } = string.Empty;
+    [MaxLength(300)]
+    public string NameAr { get; set; } = string.Empty;
+
+    [MaxLength(300)]
+    public string? NameEn { get; set; }
     public string? Url { get; set; }
 
     // --- العلاقات ---

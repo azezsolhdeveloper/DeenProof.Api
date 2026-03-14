@@ -140,9 +140,11 @@ namespace DeenProof.Api.Controllers
                     ClaimEn = c.ClaimEn,
                     ResponseAr = c.ResponseAr,
                     ResponseEn = c.ResponseEn,
-                    Sources = c.Sources.Select(s => new SourceDto { Id = s.Id, Text = s.Text, Url = s.Url }).ToList()
+                    Sources = c.Sources.Select(s => new SourceDto { Id = s.Id, NameAr = s.NameAr, NameEn = s.NameEn, Url = s.Url }).ToList()
+
                 }).ToList(),
-                MainSources = doubt.MainSources.Select(s => new SourceDto { Id = s.Id, Text = s.Text, Url = s.Url }).ToList(),
+                MainSources = doubt.MainSources.Select(s => new SourceDto { Id = s.Id, NameAr = s.NameAr, NameEn = s.NameEn, Url = s.Url }).ToList(),
+
 
                 // --- ✅✅✅ بداية الإصلاح الحقيقي والنهائي ✅✅✅ ---
                 Comments = doubt.Comments.Select(c => new CommentDto
@@ -240,7 +242,8 @@ namespace DeenProof.Api.Controllers
                         var existingSource = existingSources.FirstOrDefault(s => s.Id == sourceDto.Id);
                         if (existingSource != null)
                         {
-                            existingSource.Text = sourceDto.Text;
+                            existingSource.NameAr = sourceDto.NameAr; // ✅ تعديل هنا
+                            existingSource.NameEn = sourceDto.NameEn; // ✅ تعديل هنا
                             existingSource.Url = sourceDto.Url;
                         }
                     }
@@ -249,7 +252,8 @@ namespace DeenProof.Api.Controllers
                         // إضافة مصدر جديد
                         doubt.MainSources.Add(new Source
                         {
-                            Text = sourceDto.Text,
+                            NameAr = sourceDto.NameAr, // ✅ تعديل هنا
+                            NameEn = sourceDto.NameEn, // ✅ تعديل هنا
                             Url = sourceDto.Url
                         });
                     }
@@ -289,7 +293,8 @@ namespace DeenProof.Api.Controllers
                 ResponseEn = claimDto.ResponseEn,
                 // --- ✅✅✅ 1. بداية الإصلاح الحقيقي والنهائي ✅✅✅ ---
                 // نقوم بتحويل كل SourceDto إلى كيان Source جديد
-                Sources = claimDto.Sources.Select(s => new Source { Text = s.Text, Url = s.Url }).ToList()
+                Sources = claimDto.Sources.Select(s => new Source { NameAr = s.NameAr, NameEn = s.NameEn, Url = s.Url }).ToList()
+
             };
 
             _context.Claims.Add(newClaim);
@@ -303,7 +308,8 @@ namespace DeenProof.Api.Controllers
                 ClaimEn = newClaim.ClaimEn,
                 ResponseAr = newClaim.ResponseAr,
                 ResponseEn = newClaim.ResponseEn,
-                Sources = newClaim.Sources.Select(s => new SourceDto { Id = s.Id, Text = s.Text, Url = s.Url }).ToList()
+                Sources = newClaim.Sources.Select(s => new SourceDto { Id = s.Id, NameAr = s.NameAr, NameEn = s.NameEn, Url = s.Url }).ToList()
+
             };
 
             return Ok(resultDto);
@@ -343,16 +349,16 @@ namespace DeenProof.Api.Controllers
                     var existingSource = claim.Sources.FirstOrDefault(s => s.Id == sourceDto.Id && s.Id != 0);
                     if (existingSource != null)
                     {
-                        // تحديث مصدر موجود
-                        existingSource.Text = sourceDto.Text;
+                        existingSource.NameAr = sourceDto.NameAr; // ✅ تعديل هنا
+                        existingSource.NameEn = sourceDto.NameEn; // ✅ تعديل هنا
                         existingSource.Url = sourceDto.Url;
                     }
                     else
                     {
-                        // إضافة مصدر جديد
                         claim.Sources.Add(new Source
                         {
-                            Text = sourceDto.Text,
+                            NameAr = sourceDto.NameAr, // ✅ تعديل هنا
+                            NameEn = sourceDto.NameEn, // ✅ تعديل هنا
                             Url = sourceDto.Url
                         });
                     }

@@ -185,9 +185,9 @@ public class PublicController : ControllerBase
                 c.ClaimEn,
                 c.ResponseAr,
                 c.ResponseEn,
-                Sources = c.Sources.Select(s => new { s.Id, s.Text, s.Url })
+                Sources = c.Sources.Select(s => new { s.Id, s.NameAr, s.NameEn, s.Url }) // ✅ إصلاح هنا
             }),
-            MainSources = doubt.MainSources.Select(s => new { s.Id, Name = s.Text, Url = s.Url }),
+            MainSources = doubt.MainSources.Select(s => new { s.Id, s.NameAr, s.NameEn, s.Url }),
             doubt.ViewCount,
             doubt.LikeCount
         };
