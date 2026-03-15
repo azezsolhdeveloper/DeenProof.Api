@@ -445,17 +445,15 @@ namespace DeenProof.Api.Controllers
         [Authorize(Roles = "Researcher, Reviewer, Admin, SuperAdmin")]
         public async Task<IActionResult> UpdateDoubtStatus(int id, [FromBody] UpdateStatusRequest request)
         {
-            // التحقق من صحة النموذج المستلم
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            // 1. جلب الشبهة مع كل علاقاتها لمنع فقدان البيانات
+            // 1. نقوم بتضمين العلاقات التي قد يتم حذفها عن طريق الخطأ، ولكن ليس العلاقات التي تسبب مشاكل (مثل Reviewer)
             var doubt = await _context.Doubts
                 .Include(d => d.DetailedRebuttal)
                 .Include(d => d.MainSources)
-                .Include(d => d.Reviewer)
                 .FirstOrDefaultAsync(d => d.Id == id);
 
             if (doubt == null)
@@ -463,13 +461,11 @@ namespace DeenProof.Api.Controllers
                 return NotFound(new { message = "Doubt not found." });
             }
 
-            // التحقق من صحة قيمة الحالة الجديدة
             if (!Enum.TryParse<DoubtStatus>(request.NewStatus, true, out var newStatusEnum))
             {
                 return BadRequest(new { message = $"Invalid status value: {request.NewStatus}" });
             }
 
-            // جلب بيانات المستخدم الحالي
             var currentUserIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
             var currentUserRole = User.FindFirstValue(ClaimTypes.Role);
             if (string.IsNullOrEmpty(currentUserIdStr) || !int.TryParse(currentUserIdStr, out var currentUserId))
@@ -503,7 +499,7 @@ namespace DeenProof.Api.Controllers
                     break;
             }
 
-            // منطق تسجيل المراجع
+            // منطق تسجيل المراجع (يعمل بشكل صحيح الآن)
             if (newStatusEnum == DoubtStatus.PendingApproval || newStatusEnum == DoubtStatus.Published)
             {
                 if (doubt.ReviewerId == null)
@@ -520,15 +516,6 @@ namespace DeenProof.Api.Controllers
                 doubt.PublishedAt = DateTime.UtcNow;
             }
 
-            // 2. نخبر Entity Framework بشكل صريح أننا قمنا بتعديل كيان `Doubt` فقط.
-            _context.Entry(doubt).State = EntityState.Modified;
-
-            // 3. إذا كان هناك مراجع مرتبط، نخبر EF أننا لا نريد تعديله لمنع التعارض.
-            if (doubt.Reviewer != null)
-            {
-                _context.Entry(doubt.Reviewer).State = EntityState.Unchanged;
-            }
-
             // حفظ التغييرات
             try
             {
@@ -543,7 +530,6 @@ namespace DeenProof.Api.Controllers
             catch (DbUpdateException ex)
             {
                 // يمكنك تسجيل الخطأ هنا في نظام تسجيل حقيقي إذا أردت
-                // _logger.LogError(ex, "Failed to update doubt status for ID {DoubtId}", id);
                 return StatusCode(500, new { message = "An error occurred while updating the database.", details = ex.Message });
             }
         }
