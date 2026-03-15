@@ -434,13 +434,6 @@ namespace DeenProof.Api.Controllers
             public string NewStatus { get; set; }
         }
 
-        // DeenProof.Api/Controllers/DoubtsController.cs
-
-        // DeenProof.Api/Controllers/DoubtsController.cs
-
-        // DeenProof.Api/Controllers/DoubtsController.cs
-        // DeenProof.Api/Controllers/DoubtsController.cs
-
         [HttpPost("{id}/status")]
         [Authorize(Roles = "Researcher, Reviewer, Admin, SuperAdmin")]
         public async Task<IActionResult> UpdateDoubtStatus(int id, [FromBody] UpdateStatusRequest request)
@@ -533,7 +526,34 @@ namespace DeenProof.Api.Controllers
                 return StatusCode(500, new { message = "An error occurred while updating the database.", details = ex.Message });
             }
         }
+        [HttpGet("my-library")]
+        [Authorize(Roles = "Researcher")] // ✅ مخصصة للباحثين فقط
+        public async Task<ActionResult<IEnumerable<object>>> GetMyLibrary()
+        {
+            var currentUserIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(currentUserIdStr, out var currentUserId))
+            {
+                return Unauthorized("Invalid user token.");
+            }
 
+            var doubts = await _context.Doubts
+                .AsNoTracking()
+                // 1. الشرط الوحيد هو أن يكون الباحث هو المؤلف
+                .Where(d => d.AuthorId == currentUserId)
+                .Include(d => d.Author)
+                .OrderByDescending(d => d.UpdatedAt) // 2. نرتب حسب آخر تحديث
+                .Select(d => new
+                {
+                    d.Id,
+                    d.TitleAr,
+                    d.TitleEn, // ✅ من الجيد إرسال العنوان الإنجليزي أيضًا
+                    Status = d.Status.ToString(),
+                    d.UpdatedAt
+                })
+                .ToListAsync();
+
+            return Ok(doubts);
+        }
         [HttpGet("search-all")]
         [Authorize(Roles = "Admin, SuperAdmin, Reviewer")]
 public async Task<IActionResult> SearchAllDoubts(
