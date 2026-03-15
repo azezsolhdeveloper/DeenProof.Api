@@ -514,7 +514,15 @@ namespace DeenProof.Api.Controllers
                     }
                     break;
             }
-            // --- نهاية الإصلاح الحقيقي والنهائي ---
+            if (newStatusEnum == DoubtStatus.PendingApproval || newStatusEnum == DoubtStatus.Published)
+            {
+                // 2. إذا لم يكن هناك مراجع مسجل من قبل، قم بتسجيل المستخدم الحالي كمراجع
+                if (doubt.ReviewerId == null)
+                {
+                    doubt.ReviewerId = currentUserId;
+                    Console.WriteLine($"[DEBUG] Assigning Reviewer ID: {currentUserId}");
+                }
+            }
 
             // تحديث الحالة وتاريخ النشر
             doubt.Status = newStatusEnum; doubt.UpdatedAt = DateTime.UtcNow;
