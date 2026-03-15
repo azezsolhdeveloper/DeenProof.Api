@@ -450,7 +450,7 @@ namespace DeenProof.Api.Controllers
                 return BadRequest(ModelState);
             }
 
-            // 1. نقوم بتضمين العلاقات التي قد يتم حذفها عن طريق الخطأ، ولكن ليس العلاقات التي تسبب مشاكل (مثل Reviewer)
+            // 1. جلب الشبهة مع كل علاقاتها لمنع فقدان البيانات (الحل الأول)
             var doubt = await _context.Doubts
                 .Include(d => d.DetailedRebuttal)
                 .Include(d => d.MainSources)
@@ -499,10 +499,10 @@ namespace DeenProof.Api.Controllers
                     break;
             }
 
-            // منطق تسجيل المراجع (يعمل بشكل صحيح الآن)
-            if (newStatusEnum == DoubtStatus.PendingApproval || newStatusEnum == DoubtStatus.Published)
+            // 2. منطق تسجيل المراجع الصحيح (الحل الثاني)
+            if (newStatusEnum == DoubtStatus.PendingApproval)
             {
-                if (doubt.ReviewerId == null)
+                if (currentUserRole == "Reviewer" && doubt.ReviewerId == null)
                 {
                     doubt.ReviewerId = currentUserId;
                 }
