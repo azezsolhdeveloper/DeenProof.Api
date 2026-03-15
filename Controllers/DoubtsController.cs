@@ -457,8 +457,10 @@ namespace DeenProof.Api.Controllers
 
             // البحث عن الشبهة في قاعدة البيانات
             var doubt = await _context.Doubts
-                .Include(d => d.Reviewer) // ✅ 1. قم بتضمين المراجع بشكل صريح
-                .FirstOrDefaultAsync(d => d.Id == id);
+          .Include(d => d.DetailedRebuttal)
+          .Include(d => d.MainSources)
+          .Include(d => d.Reviewer)
+          .FirstOrDefaultAsync(d => d.Id == id);
             if (doubt == null)
             {
                 Console.WriteLine($"[DEBUG] FAILED: Doubt with ID {id} not found.");
