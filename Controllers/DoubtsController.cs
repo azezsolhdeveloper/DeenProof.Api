@@ -439,110 +439,100 @@ namespace DeenProof.Api.Controllers
         // DeenProof.Api/Controllers/DoubtsController.cs
 
         // DeenProof.Api/Controllers/DoubtsController.cs
+        // DeenProof.Api/Controllers/DoubtsController.cs
 
         [HttpPost("{id}/status")]
         [Authorize(Roles = "Researcher, Reviewer, Admin, SuperAdmin")]
         public async Task<IActionResult> UpdateDoubtStatus(int id, [FromBody] UpdateStatusRequest request)
         {
-            // --- بداية الديبق ---
-            Console.WriteLine($"\n--- [DEBUG] Request to update status for doubt ID: {id} ---");
-
             // التحقق من صحة النموذج المستلم
             if (!ModelState.IsValid)
             {
-                Console.WriteLine("[DEBUG] FAILED: ModelState is invalid.");
                 return BadRequest(ModelState);
             }
-            Console.WriteLine($"[DEBUG] Received status from request: '{request.NewStatus}'");
 
-            // البحث عن الشبهة في قاعدة البيانات
+            // 1. جلب الشبهة مع كل علاقاتها لمنع فقدان البيانات
             var doubt = await _context.Doubts
-          .Include(d => d.DetailedRebuttal)
-          .Include(d => d.MainSources)
-          .Include(d => d.Reviewer)
-          .FirstOrDefaultAsync(d => d.Id == id);
+                .Include(d => d.DetailedRebuttal)
+                .Include(d => d.MainSources)
+                .Include(d => d.Reviewer)
+                .FirstOrDefaultAsync(d => d.Id == id);
+
             if (doubt == null)
             {
-                Console.WriteLine($"[DEBUG] FAILED: Doubt with ID {id} not found.");
                 return NotFound(new { message = "Doubt not found." });
             }
 
             // التحقق من صحة قيمة الحالة الجديدة
             if (!Enum.TryParse<DoubtStatus>(request.NewStatus, true, out var newStatusEnum))
             {
-                Console.WriteLine($"[DEBUG] FAILED: '{request.NewStatus}' is not a valid status.");
                 return BadRequest(new { message = $"Invalid status value: {request.NewStatus}" });
             }
-            Console.WriteLine($"[DEBUG] Parsed new status successfully: '{newStatusEnum}'");
 
             // جلب بيانات المستخدم الحالي
             var currentUserIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
             var currentUserRole = User.FindFirstValue(ClaimTypes.Role);
             if (string.IsNullOrEmpty(currentUserIdStr) || !int.TryParse(currentUserIdStr, out var currentUserId))
             {
-                Console.WriteLine("[DEBUG] FAILED: User ID not found or invalid in token.");
                 return Unauthorized("Invalid user token.");
             }
             bool isOwner = doubt.AuthorId == currentUserId;
 
-            Console.WriteLine($"[DEBUG] User Role: '{currentUserRole}', Is Owner: {isOwner}");
-            Console.WriteLine($"[DEBUG] Attempting to change status from '{doubt.Status}' to '{newStatusEnum}'");
-
-            // --- ✅✅✅ بداية الإصلاح الحقيقي والنهائي (منطق الصلاحيات + طريقة الرفض) ✅✅✅ ---
+            // منطق التحقق من الصلاحيات
             switch (newStatusEnum)
             {
                 case DoubtStatus.PendingReview:
                     if (!isOwner)
                     {
-                        Console.WriteLine("[DEBUG] FORBIDDEN (403): Only the author can submit for review.");
-                        // استخدام الطريقة الصحيحة لإرجاع خطأ 403
                         return StatusCode(StatusCodes.Status403Forbidden, new { message = "ليس لديك صلاحية إرسال هذا الرد للمراجعة." });
                     }
                     break;
 
                 case DoubtStatus.NeedsRevision:
-                    // الآن، المراجع أو المدير أو المشرف العام يمكنهم طلب التعديل
                     if (currentUserRole != "Reviewer" && currentUserRole != "Admin" && currentUserRole != "SuperAdmin")
                     {
-                        Console.WriteLine("[DEBUG] FORBIDDEN (403): Only Reviewers/Admins/SuperAdmins can request revision.");
                         return StatusCode(StatusCodes.Status403Forbidden, new { message = "ليس لديك صلاحية طلب تعديل على هذا الرد." });
                     }
                     break;
 
                 case DoubtStatus.Published:
-                    // فقط المدير أو المشرف العام يمكنه النشر
                     if (currentUserRole != "Admin" && currentUserRole != "SuperAdmin")
                     {
-                        Console.WriteLine("[DEBUG] FORBIDDEN (403): Only Admins/SuperAdmins can publish.");
                         return StatusCode(StatusCodes.Status403Forbidden, new { message = "ليس لديك صلاحية نشر هذا الرد." });
                     }
                     break;
             }
+
+            // منطق تسجيل المراجع
             if (newStatusEnum == DoubtStatus.PendingApproval || newStatusEnum == DoubtStatus.Published)
             {
-                // 2. إذا لم يكن هناك مراجع مسجل من قبل، قم بتسجيل المستخدم الحالي كمراجع
                 if (doubt.ReviewerId == null)
                 {
                     doubt.ReviewerId = currentUserId;
-                    Console.WriteLine($"[DEBUG] Assigning Reviewer ID: {currentUserId}");
                 }
             }
 
             // تحديث الحالة وتاريخ النشر
-            doubt.Status = newStatusEnum; doubt.UpdatedAt = DateTime.UtcNow;
-            Console.WriteLine($"[DEBUG] Updated doubt status in memory to: '{doubt.Status}'");
+            doubt.Status = newStatusEnum;
+            doubt.UpdatedAt = DateTime.UtcNow;
             if (newStatusEnum == DoubtStatus.Published && doubt.PublishedAt == null)
             {
                 doubt.PublishedAt = DateTime.UtcNow;
-                Console.WriteLine($"[DEBUG] Setting PublishedAt to: {doubt.PublishedAt}");
+            }
+
+            // 2. نخبر Entity Framework بشكل صريح أننا قمنا بتعديل كيان `Doubt` فقط.
+            _context.Entry(doubt).State = EntityState.Modified;
+
+            // 3. إذا كان هناك مراجع مرتبط، نخبر EF أننا لا نريد تعديله لمنع التعارض.
+            if (doubt.Reviewer != null)
+            {
+                _context.Entry(doubt.Reviewer).State = EntityState.Unchanged;
             }
 
             // حفظ التغييرات
             try
             {
                 await _context.SaveChangesAsync();
-                Console.WriteLine("[DEBUG] SUCCESS: Changes saved to database.");
-                Console.WriteLine("--- [DEBUG] End of request ---\n");
                 return Ok(new
                 {
                     message = "Status updated successfully.",
@@ -552,13 +542,12 @@ namespace DeenProof.Api.Controllers
             }
             catch (DbUpdateException ex)
             {
-                Console.WriteLine("[DEBUG] FAILED: Database update exception.");
-                Console.WriteLine($"[DEBUG] Exception: {ex.Message}");
-                if (ex.InnerException != null) Console.WriteLine($"[DEBUG] Inner Exception: {ex.InnerException.Message}");
-                Console.WriteLine("--- [DEBUG] End of request ---\n");
+                // يمكنك تسجيل الخطأ هنا في نظام تسجيل حقيقي إذا أردت
+                // _logger.LogError(ex, "Failed to update doubt status for ID {DoubtId}", id);
                 return StatusCode(500, new { message = "An error occurred while updating the database.", details = ex.Message });
             }
         }
+
         [HttpGet("search-all")]
         [Authorize(Roles = "Admin, SuperAdmin, Reviewer")]
 public async Task<IActionResult> SearchAllDoubts(
