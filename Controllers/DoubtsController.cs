@@ -75,15 +75,35 @@ namespace DeenProof.Api.Controllers
         }
 
         // GET: api/doubts/review
-        // Endpoint مخصصة للمراجعين والمدراء
         [HttpGet("review")]
         [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
         public async Task<ActionResult<IEnumerable<object>>> GetDoubtsForReview()
         {
-            var doubts = await _context.Doubts
+            // --- ✅ 1. جلب بيانات المستخدم الحالي أولاً لتحديد صلاحياته ---
+            var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
+            var currentUserRole = User.FindFirstValue(ClaimTypes.Role);
+            bool isAdminOrSuperAdmin = currentUserRole == "Admin" || currentUserRole == "SuperAdmin";
+
+            var query = _context.Doubts
                 .AsNoTracking()
-                // المراجع يرى الشبهات التي تنتظر المراجعة أو الموافقة أو تحتاج تعديل
-                .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval || d.Status == DoubtStatus.NeedsRevision)
+                .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval || d.Status == DoubtStatus.NeedsRevision);
+
+            // --- ✅ 2. تطبيق منطق القفل فقط إذا كان المستخدم "مراجع" ---
+            if (!isAdminOrSuperAdmin)
+            {
+                query = query.Where(d =>
+                    // إما أن المهمة غير مقفولة
+                    d.LockedByReviewerId == null ||
+                    // أو أنها مقفولة ولكن من قبل المستخدم الحالي
+                    d.LockedByReviewerId == currentUserId ||
+                    // أو أن القفل قديم (انتهت صلاحيته بعد 60 دقيقة)
+                    (d.LockedAt.HasValue && d.LockedAt.Value.AddMinutes(60) < DateTime.UtcNow)
+                );
+            }
+            // إذا كان المستخدم مديرًا أو مشرفًا عامًا، فإنه يتجاوز هذا الفلتر ويرى كل شيء.
+
+            // --- ✅ 3. تنفيذ الاستعلام النهائي ---
+            var doubts = await query
                 .Include(d => d.Author)
                 .OrderByDescending(d => d.CreatedAt)
                 .Select(d => new
@@ -92,13 +112,15 @@ namespace DeenProof.Api.Controllers
                     d.TitleAr,
                     Status = d.Status.ToString(),
                     AuthorName = d.Author != null ? d.Author.Name : "مستخدم محذوف",
-                    d.CreatedAt
+                    d.CreatedAt,
+                    // ✅ إضافة بيانات القفل إلى الاستجابة لتكون مفيدة في الواجهة الأمامية إذا أردت
+                    d.LockedByReviewerId,
+                    d.LockedAt
                 })
                 .ToListAsync();
 
             return Ok(doubts);
         }
-
         // --- نهاية الإصلاح الحقيقي والنهائي ---
 
         [HttpGet("{id}")]
@@ -602,7 +624,54 @@ public async Task<IActionResult> SearchAllDoubts(
             return Ok(doubts);
         }
 
+        [HttpPost("{id}/lock")]
+        [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
+        public async Task<IActionResult> LockDoubtForReview([FromRoute] int id) // ✅✅✅ أضف [FromRoute] هنا
+        {
+            var doubt = await _context.Doubts.FindAsync(id);
+            if (doubt == null)
+            {
+                return NotFound(new { message = "Doubt not found." });
+            }
 
+            var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
+
+            if (doubt.LockedByReviewerId != null && doubt.LockedByReviewerId != currentUserId && doubt.LockedAt.HasValue && doubt.LockedAt.Value.AddMinutes(60) > DateTime.UtcNow)
+            {
+                var lockedBy = await _context.Users.FindAsync(doubt.LockedByReviewerId);
+                return StatusCode(StatusCodes.Status409Conflict, new { message = $"هذه المراجعة محجوزة حاليًا بواسطة {lockedBy?.Name ?? "مراجع آخر"}. يرجى المحاولة لاحقًا." });
+            }
+
+            doubt.LockedByReviewerId = currentUserId;
+            doubt.LockedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "تم حجز المراجعة لك بنجاح.", lockedAt = doubt.LockedAt, lockedBy = currentUserId });
+        }
+
+        // POST: api/doubts/{id}/unlock
+        [HttpPost("{id}/unlock")]
+        [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
+        public async Task<IActionResult> UnlockDoubt([FromRoute] int id) // ✅✅✅ أضف [FromRoute] هنا
+        {
+            var doubt = await _context.Doubts.FindAsync(id);
+            if (doubt == null)
+            {
+                return NotFound(new { message = "Doubt not found." });
+            }
+
+            var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
+
+            if (doubt.LockedByReviewerId == currentUserId)
+            {
+                doubt.LockedByReviewerId = null;
+                doubt.LockedAt = null;
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new { message = "تم إلغاء حجز المراجعة." });
+        }
         private string GenerateSlug(string titleEn, string titleAr)
         {
             // 1. نحاول استخدام العنوان الإنجليزي أولاً لأنه الأفضل للروابط

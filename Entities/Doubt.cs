@@ -56,6 +56,12 @@ public class Doubt
     [ForeignKey("AuthorId")]
     public User Author { get; set; } = null!;
 
+    // 1. من هو المراجع الذي حجز هذه الشبهة؟
+    public int? LockedByReviewerId { get; set; }
+    public User? LockedByReviewer { get; set; }
+
+    // 2. متى تم حجزها؟
+    public DateTime? LockedAt { get; set; }
     // --- علاقات التنقل (Navigation Properties) ---
     public ICollection<Claim> DetailedRebuttal { get; set; } = new List<Claim>();
     public ICollection<Source> MainSources { get; set; } = new List<Source>();
