@@ -16,10 +16,12 @@ namespace DeenProof.Api.Controllers
     public class DoubtsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly OwnerSettings _ownerSettings; // أضف هذا الحقل
 
-        public DoubtsController(ApplicationDbContext context)
+        public DoubtsController(ApplicationDbContext context, OwnerSettings ownerSettings)
         {
             _context = context;
+            _ownerSettings = ownerSettings; // قم بتهيئته هنا
         }
 
         [HttpGet]
@@ -428,29 +430,40 @@ namespace DeenProof.Api.Controllers
         [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
         public async Task<ActionResult<object>> AddCommentToDoubt(int doubtId, [FromBody] AddCommentDto commentDto)
         {
-            // --- ✅✅✅ بداية الكود التشخيصي الفائق ✅✅✅ ---
-
-            Console.WriteLine("----- DIAGNOSTIC: ALL CLAIMS FROM TOKEN -----");
-            foreach (var claim in User.Claims)
-            {
-                Console.WriteLine($"Claim Type: {claim.Type}, Claim Value: {claim.Value}");
-            }
-            Console.WriteLine("-------------------------------------------");
-
-            // --- نهاية الكود التشخيصي ---
-
-            // استمر في الكود القديم لنرى ما إذا كان سيفشل مرة أخرى
             var doubtExists = await _context.Doubts.AnyAsync(d => d.Id == doubtId);
             if (!doubtExists)
             {
                 return NotFound("Doubt not found.");
             }
 
-            var authorIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (!int.TryParse(authorIdStr, out var authorId))
+            int authorId;
+            string authorName;
+
+            // --- ✅✅✅ بداية الإصلاح الحاسم ✅✅✅ ---
+
+            if (User.HasClaim("is_owner", "true"))
             {
-                return BadRequest($"Failed to parse NameIdentifier. The value from token was: '{authorIdStr}'. It is not a valid integer User ID.");
+                // إذا كان المستخدم هو المالك، ابحث عن أول SuperAdmin في قاعدة البيانات
+                var superAdminUser = await _context.Users.FirstOrDefaultAsync(u => u.Role == UserRole.SuperAdmin);
+                if (superAdminUser == null)
+                {
+                    return StatusCode(500, "No SuperAdmin user found in the database to assign ownership.");
+                }
+                authorId = superAdminUser.Id;
+                authorName = _ownerSettings.Name; // استخدم اسم المالك من الإعدادات
             }
+            else
+            {
+                // إذا كان مستخدمًا عاديًا، استخدم بياناته من التوكن
+                var authorIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!int.TryParse(authorIdStr, out authorId))
+                {
+                    return BadRequest("Invalid user ID in token.");
+                }
+                authorName = User.FindFirstValue(ClaimTypes.Name) ?? "Unknown";
+            }
+
+            // --- نهاية الإصلاح ---
 
             var newComment = new Comment
             {
@@ -458,21 +471,12 @@ namespace DeenProof.Api.Controllers
                 Section = commentDto.Section,
                 IsInternal = true,
                 DoubtId = doubtId,
-                AuthorId = authorId,
+                AuthorId = authorId, // <-- استخدم الـ ID الصحيح الآن
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.Comments.Add(newComment);
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateException ex)
-            {
-                var innerExceptionMessage = ex.InnerException?.Message ?? ex.Message;
-                return StatusCode(500, new { message = "Failed to save comment.", details = innerExceptionMessage });
-            }
+            await _context.SaveChangesAsync();
 
             var result = new
             {
@@ -480,7 +484,7 @@ namespace DeenProof.Api.Controllers
                 newComment.Content,
                 newComment.Section,
                 newComment.CreatedAt,
-                AuthorName = User.FindFirstValue(ClaimTypes.Name)
+                AuthorName = authorName // <-- استخدم الاسم الصحيح
             };
 
             return Ok(result);
