@@ -422,10 +422,15 @@ namespace DeenProof.Api.Controllers
         }
         // DoubtsController.cs -> AddCommentToDoubt
 
+        // DoubtsController.cs -> AddCommentToDoubt
+
         [HttpPost("{doubtId}/comments")]
+        // --- ✅✅✅ بداية الإصلاح الحاسم ✅✅✅ ---
+        [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
+        // --- نهاية الإصلاح ---
         public async Task<ActionResult<object>> AddCommentToDoubt(int doubtId, [FromBody] AddCommentDto commentDto)
         {
-            // 1. جلب كيان الشبهة الكامل، وليس مجرد التحقق من وجوده
+            // 1. جلب كيان الشبهة الكامل
             var doubt = await _context.Doubts.FindAsync(doubtId);
             if (doubt == null)
             {
@@ -436,50 +441,43 @@ namespace DeenProof.Api.Controllers
             var authorIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(authorIdStr, out var authorId))
             {
+                // هذا لن يحدث الآن لأن [Authorize] سيمنع المستخدمين غير المسجلين
                 return Unauthorized("Invalid user token.");
             }
 
-            // 3. جلب كيان المستخدم الكامل (هذا هو الجزء الأكثر أمانًا)
-            var author = await _context.Users.FindAsync(authorId);
-            if (author == null)
-            {
-                return Unauthorized("Author not found in database.");
-            }
-
-            // 4. إنشاء كيان التعليق الجديد وربط الكيانات الكاملة
+            // 3. إنشاء كيان التعليق الجديد
             var newComment = new Comment
             {
                 Content = commentDto.Content,
                 Section = commentDto.Section,
                 IsInternal = true,
                 CreatedAt = DateTime.UtcNow,
-                Doubt = doubt,   // <-- اربط كيان الشبهة الكامل
-                Author = author  // <-- اربط كيان المؤلف الكامل
+                DoubtId = doubtId,   // <-- تعيين الـ ID هنا آمن
+                AuthorId = authorId  // <-- تعيين الـ ID هنا آمن
             };
 
-            // 5. أضف التعليق الجديد إلى السياق
+            // 4. أضف التعليق الجديد إلى السياق
             _context.Comments.Add(newComment);
 
-            // 6. احفظ التغييرات
+            // 5. احفظ التغييرات
             try
             {
                 await _context.SaveChangesAsync();
             }
             catch (DbUpdateException ex)
             {
-                // يمكنك ترك الكود التشخيصي هنا للأمان
                 var innerExceptionMessage = ex.InnerException?.Message ?? ex.Message;
                 return StatusCode(500, new { message = "Failed to save comment.", details = innerExceptionMessage });
             }
 
-            // 7. أرجع البيانات كما كانت
+            // 6. أرجع البيانات
             var result = new
             {
                 newComment.Id,
                 newComment.Content,
                 newComment.Section,
                 newComment.CreatedAt,
-                AuthorName = author.Name // استخدم الاسم من الكيان الذي تم جلبه
+                AuthorName = User.FindFirstValue(ClaimTypes.Name) // استخدم الاسم من التوكن مباشرة
             };
 
             return Ok(result);
