@@ -81,33 +81,40 @@ namespace DeenProof.Api.Controllers
         [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
         public async Task<ActionResult<IEnumerable<object>>> GetDoubtsForReview()
         {
-            // 1. جلب بيانات المستخدم الحالي لتحديد صلاحياته
             var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
             var currentUserRole = User.FindFirstValue(ClaimTypes.Role);
             bool isAdminOrSuperAdmin = currentUserRole == "Admin" || currentUserRole == "SuperAdmin";
 
-            // 2. الاستعلام الأساسي لجلب مهام المراجعة والموافقة
-            var query = _context.Doubts
-      .AsNoTracking()
-      .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval);
+            IQueryable<Doubt> query;
 
-            // 2. لكننا نطبق فلاتر إضافية **فقط** على المراجع العادي
-            if (!isAdminOrSuperAdmin)
+            // --- ✅✅✅ بداية المنطق الجديد والنهائي ✅✅✅ ---
+
+            if (isAdminOrSuperAdmin)
             {
-                // ✅ الفلتر الأول: المراجع يرى فقط PendingReview
-                query = query.Where(d => d.Status == DoubtStatus.PendingReview);
-
-                // ✅ الفلتر الثاني: منطق القفل (يبقى كما هو)
-                query = query.Where(d =>
-                    d.LockedByReviewerId == null ||
-                    d.LockedByReviewerId == currentUserId ||
-                    (d.LockedAt.HasValue && d.LockedAt.Value.AddMinutes(60) < DateTime.UtcNow)
-                );
+                // 1. المدير يرى كل شيء كالعادة
+                query = _context.Doubts
+                    .AsNoTracking()
+                    .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval);
             }
-            // إذا كان المستخدم مديرًا، فإنه يتجاوز هذا الفلتر ويرى كل شيء.
+            else // إذا كان المستخدم مراجعًا عاديًا
+            {
+                // 2. المراجع العادي يرى حالتين:
+                query = _context.Doubts
+                    .AsNoTracking()
+                    .Where(d =>
+                        // (أ) المهام التي تنتظر مراجعته (لم يتم قفلها من قبل آخرين)
+                        (d.Status == DoubtStatus.PendingReview && (d.LockedByReviewerId == null || d.LockedByReviewerId == currentUserId)) ||
+                        // (ب) أو المهام التي تنتظر موافقة المدير **والتي قام هو بمراجعتها**
+                        (d.Status == DoubtStatus.PendingApproval && d.ReviewerId == currentUserId)
+                    );
+            }
 
-            // 4. تنفيذ الاستعلام النهائي
+            // --- نهاية المنطق الجديد والنهائي ---
+
+            // 3. تنفيذ الاستعلام النهائي (باقي الدالة يبقى كما هو)
             var doubts = await query
+                .Include(d => d.Author)
+                .Include(d => d.LockedByReviewer) // تأكد من وجود هذا
                 .OrderByDescending(d => d.CreatedAt)
                 .Select(d => new
                 {
@@ -118,13 +125,14 @@ namespace DeenProof.Api.Controllers
                     AuthorName = d.Author.Name,
                     d.UpdatedAt,
                     d.LockedByReviewerId,
-                    LockedByReviewerName = d.LockedByReviewer != null ? d.LockedByReviewer.Name : null
+                    LockedByReviewerName = d.LockedByReviewer != null ? d.LockedByReviewer.Name : null,
+                    // ✅ أضف هذا الحقل المهم
+                    ReviewerId = d.ReviewerId
                 })
                 .ToListAsync();
 
             return Ok(doubts);
         }
-
 
         [HttpGet("{id}")]
         public async Task<ActionResult<DoubtDetailDto>> GetDoubtById(int id)
