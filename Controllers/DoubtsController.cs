@@ -95,12 +95,9 @@ namespace DeenProof.Api.Controllers
             if (!isAdminOrSuperAdmin)
             {
                 query = query.Where(d =>
-                    // الشرط: أرني المهمة فقط إذا كانت...
-                    // (أ) غير مقفولة على الإطلاق
+
                     d.LockedByReviewerId == null ||
-                    // (ب) أو مقفولة من قبلي أنا شخصيًا
                     d.LockedByReviewerId == currentUserId ||
-                    // (ج) أو أن القفل قديم جدًا (انتهت صلاحيته)
                     (d.LockedAt.HasValue && d.LockedAt.Value.AddMinutes(60) < DateTime.UtcNow)
                 );
             }
@@ -659,9 +656,11 @@ public async Task<IActionResult> SearchAllDoubts(
         }
 
         // POST: api/doubts/{id}/unlock
+        // DoubtsController.cs
+
         [HttpPost("{id}/unlock")]
-        [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
-        public async Task<IActionResult> UnlockDoubt([FromRoute] int id) // ✅✅✅ أضف [FromRoute] هنا
+        [Authorize(Roles = "Reviewer, Admin, SuperAdmin")] // يمكن للمراجع والمدير فك القفل
+        public async Task<IActionResult> UnlockDoubt([FromRoute] int id)
         {
             var doubt = await _context.Doubts.FindAsync(id);
             if (doubt == null)
@@ -669,17 +668,41 @@ public async Task<IActionResult> SearchAllDoubts(
                 return NotFound(new { message = "Doubt not found." });
             }
 
-            var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
-
-            if (doubt.LockedByReviewerId == currentUserId)
+            // إذا لم تكن المهمة مقفولة أصلاً، فلا داعي لفعل أي شيء
+            if (doubt.LockedByReviewerId == null)
             {
+                return Ok(new { message = "المهمة ليست محجوزة بالفعل." });
+            }
+
+            var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
+            var currentUserRole = User.FindFirstValue(ClaimTypes.Role);
+            bool isAdminOrSuperAdmin = currentUserRole == "Admin" || currentUserRole == "SuperAdmin";
+
+            // --- ✅✅✅ بداية المنطق الصحيح والنهائي ✅✅✅ ---
+
+            // تحقق مما إذا كان المستخدم لديه صلاحية فك القفل
+            // الصلاحية تُمنح في حالتين:
+            // 1. إذا كان المستخدم الحالي هو نفسه من قام بالقفل.
+            // 2. أو إذا كان المستخدم الحالي مديرًا أو مشرفًا عامًا (يمكنه تجاوز أي قفل).
+            if (doubt.LockedByReviewerId == currentUserId || isAdminOrSuperAdmin)
+            {
+                // قم بفك القفل
                 doubt.LockedByReviewerId = null;
                 doubt.LockedAt = null;
                 await _context.SaveChangesAsync();
-            }
 
-            return Ok(new { message = "تم إلغاء حجز المراجعة." });
+                // أرجع رسالة نجاح واضحة
+                return Ok(new { message = "تم فك حجز المراجعة بنجاح." });
+            }
+            else
+            {
+                // إذا وصل الكود إلى هنا، فهذا يعني أن مراجعًا يحاول فك قفل مهمة لا يملكها
+                // هذا السيناريو لا يجب أن يحدث في الحالة الطبيعية، ولكنه حماية إضافية
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "ليس لديك صلاحية فك حجز هذه المراجعة." });
+            }
+            // --- نهاية المنطق الصحيح والنهائي ---
         }
+
         private string GenerateSlug(string titleEn, string titleAr)
         {
             // 1. نحاول استخدام العنوان الإنجليزي أولاً لأنه الأفضل للروابط
