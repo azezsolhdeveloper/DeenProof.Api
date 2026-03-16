@@ -66,28 +66,30 @@ namespace DeenProof.Api.Controllers
             }
             else if (currentUserRole == "Reviewer")
             {
-                // المراجع يرى الشبهات التي تنتظر المراجعة أو الموافقة (والتي لم يكتبها هو)
+                // المراجع يرى مهامه النشطة أو التي طلب تعديلها
                 myTasksQuery = myTasksQuery.Where(d =>
-        d.Status == DoubtStatus.PendingReview
-        && d.AuthorId != currentUserId
-    );
+                    (d.Status == DoubtStatus.PendingReview && d.AuthorId != currentUserId) ||
+                    (d.Status == DoubtStatus.NeedsRevision && d.ReviewerId == currentUserId) // ✅ أضفنا هذه الحالة
+                );
 
-                // **ثم**، طبق فلتر القفل على هذه النتائج
+                // طبق فلتر القفل على مهام المراجعة فقط
                 myTasksQuery = myTasksQuery.Where(d =>
-                    // أرني المهمة فقط إذا كانت...
-                    // (أ) غير مقفولة على الإطلاق
+                    d.Status != DoubtStatus.PendingReview || // اسمح بمرور الحالات الأخرى
                     d.LockedByReviewerId == null ||
-                    // (ب) أو مقفولة من قبلي أنا شخصيًا
                     d.LockedByReviewerId == currentUserId ||
-                    // (ج) أو أن القفل قديم جدًا (انتهت صلاحيته)
                     (d.LockedAt.HasValue && d.LockedAt.Value.AddMinutes(60) < DateTime.UtcNow)
                 );
             }
             else if (currentUserRole == "Admin" || currentUserRole == "SuperAdmin")
             {
-                // ✅ المدير يرى كل المهام التي تنتظر إجراء
-                myTasksQuery = myTasksQuery.Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval || d.Status == DoubtStatus.NeedsRevision);
+                // المدير يرى كل المهام التي تنتظر إجراء
+                myTasksQuery = myTasksQuery.Where(d =>
+                    d.Status == DoubtStatus.PendingReview ||
+                    d.Status == DoubtStatus.PendingApproval ||
+                    d.Status == DoubtStatus.NeedsRevision // ✅ أضفنا هذه الحالة
+                );
             }
+
             else
             {
                 // أي دور آخر لا يرى مهام
