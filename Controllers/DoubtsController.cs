@@ -79,43 +79,29 @@ namespace DeenProof.Api.Controllers
         [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
         public async Task<ActionResult<IEnumerable<object>>> GetDoubtsForReview()
         {
-            // --- ✅ 1. جلب بيانات المستخدم الحالي أولاً لتحديد صلاحياته ---
-            var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
-            var currentUserRole = User.FindFirstValue(ClaimTypes.Role);
-            bool isAdminOrSuperAdmin = currentUserRole == "Admin" || currentUserRole == "SuperAdmin";
-
             var query = _context.Doubts
                 .AsNoTracking()
-                .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval || d.Status == DoubtStatus.NeedsRevision);
+                .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval);
 
-            // --- ✅ 2. تطبيق منطق القفل فقط إذا كان المستخدم "مراجع" ---
-            if (!isAdminOrSuperAdmin)
-            {
-                query = query.Where(d =>
-                    // إما أن المهمة غير مقفولة
-                    d.LockedByReviewerId == null ||
-                    // أو أنها مقفولة ولكن من قبل المستخدم الحالي
-                    d.LockedByReviewerId == currentUserId ||
-                    // أو أن القفل قديم (انتهت صلاحيته بعد 60 دقيقة)
-                    (d.LockedAt.HasValue && d.LockedAt.Value.AddMinutes(60) < DateTime.UtcNow)
-                );
-            }
-            // إذا كان المستخدم مديرًا أو مشرفًا عامًا، فإنه يتجاوز هذا الفلتر ويرى كل شيء.
-
-            // --- ✅ 3. تنفيذ الاستعلام النهائي ---
             var doubts = await query
-                .Include(d => d.Author)
                 .OrderByDescending(d => d.CreatedAt)
                 .Select(d => new
                 {
                     d.Id,
                     d.TitleAr,
+                    d.TitleEn,
                     Status = d.Status.ToString(),
+                    // ✅ آمن: تحقق من وجود المؤلف قبل الوصول إلى اسمه
                     AuthorName = d.Author != null ? d.Author.Name : "مستخدم محذوف",
-                    d.CreatedAt,
-                    // ✅ إضافة بيانات القفل إلى الاستجابة لتكون مفيدة في الواجهة الأمامية إذا أردت
+                    d.UpdatedAt,
+
                     d.LockedByReviewerId,
-                    d.LockedAt
+
+                    // ✅✅✅ الحل الآمن والنهائي هنا ✅✅✅
+                    // استخدمنا الشرط الثلاثي (Ternary Operator) للتحقق من وجود المراجع
+                    // قبل محاولة الوصول إلى اسمه. إذا كان `d.LockedByReviewer` هو `null`،
+                    // فإننا نرجع `null` كقيمة للاسم.
+                    LockedByReviewerName = d.LockedByReviewer != null ? d.LockedByReviewer.Name : null
                 })
                 .ToListAsync();
 
