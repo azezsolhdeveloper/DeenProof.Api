@@ -612,7 +612,7 @@ public async Task<IActionResult> SearchAllDoubts(
 
         [HttpPost("{id}/lock")]
         [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
-        public async Task<IActionResult> LockDoubtForReview([FromRoute] int id) // ✅✅✅ أضف [FromRoute] هنا
+        public async Task<IActionResult> LockDoubtForReview([FromRoute] int id)
         {
             var doubt = await _context.Doubts.FindAsync(id);
             if (doubt == null)
@@ -622,18 +622,23 @@ public async Task<IActionResult> SearchAllDoubts(
 
             var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
 
+            // ✅✅✅ هذا هو المنطق الحاسم ✅✅✅
+            // إذا كانت المهمة مقفولة من قبل شخص آخر، ولم تنتهِ صلاحية القفل
             if (doubt.LockedByReviewerId != null && doubt.LockedByReviewerId != currentUserId && doubt.LockedAt.HasValue && doubt.LockedAt.Value.AddMinutes(60) > DateTime.UtcNow)
             {
                 var lockedBy = await _context.Users.FindAsync(doubt.LockedByReviewerId);
-                return StatusCode(StatusCodes.Status409Conflict, new { message = $"هذه المراجعة محجوزة حاليًا بواسطة {lockedBy?.Name ?? "مراجع آخر"}. يرجى المحاولة لاحقًا." });
+                // أرجع خطأ 409 Conflict (تضارب)
+                return StatusCode(StatusCodes.Status409Conflict, new { message = $"هذه المراجعة محجوزة حاليًا بواسطة {lockedBy?.Name ?? "مراجع آخر"}." });
             }
 
+            // إذا لم يكن هناك تضارب، قم بقفل المهمة للمستخدم الحالي
             doubt.LockedByReviewerId = currentUserId;
             doubt.LockedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "تم حجز المراجعة لك بنجاح.", lockedAt = doubt.LockedAt, lockedBy = currentUserId });
+            // أرجع استجابة نجاح
+            return Ok(new { message = "تم حجز المراجعة لك بنجاح." });
         }
 
         // POST: api/doubts/{id}/unlock
