@@ -469,7 +469,6 @@ namespace DeenProof.Api.Controllers
             [Required]
             public string NewStatus { get; set; }
         }
-
         [HttpPost("{id}/status")]
         [Authorize(Roles = "Researcher, Reviewer, Admin, SuperAdmin")]
         public async Task<IActionResult> UpdateDoubtStatus(int id, [FromBody] UpdateStatusRequest request)
@@ -479,10 +478,8 @@ namespace DeenProof.Api.Controllers
                 return BadRequest(ModelState);
             }
 
-            // 1. جلب الشبهة مع كل علاقاتها لمنع فقدان البيانات (الحل الأول)
             var doubt = await _context.Doubts
-                .Include(d => d.DetailedRebuttal)
-                .Include(d => d.MainSources)
+                .Include(d => d.Reviewer)
                 .FirstOrDefaultAsync(d => d.Id == id);
 
             if (doubt == null)
@@ -503,7 +500,6 @@ namespace DeenProof.Api.Controllers
             }
             bool isOwner = doubt.AuthorId == currentUserId;
 
-            // منطق التحقق من الصلاحيات
             switch (newStatusEnum)
             {
                 case DoubtStatus.PendingReview:
@@ -518,6 +514,7 @@ namespace DeenProof.Api.Controllers
                     {
                         return StatusCode(StatusCodes.Status403Forbidden, new { message = "ليس لديك صلاحية طلب تعديل على هذا الرد." });
                     }
+                    doubt.ReviewerId = currentUserId;
                     break;
 
                 case DoubtStatus.Published:
@@ -528,16 +525,14 @@ namespace DeenProof.Api.Controllers
                     break;
             }
 
-            // 2. منطق تسجيل المراجع الصحيح (الحل الثاني)
             if (newStatusEnum == DoubtStatus.PendingApproval)
             {
-                if (currentUserRole == "Reviewer" && doubt.ReviewerId == null)
+                if (currentUserRole == "Reviewer")
                 {
                     doubt.ReviewerId = currentUserId;
                 }
             }
 
-            // تحديث الحالة وتاريخ النشر
             doubt.Status = newStatusEnum;
             doubt.UpdatedAt = DateTime.UtcNow;
             if (newStatusEnum == DoubtStatus.Published && doubt.PublishedAt == null)
@@ -545,7 +540,6 @@ namespace DeenProof.Api.Controllers
                 doubt.PublishedAt = DateTime.UtcNow;
             }
 
-            // حفظ التغييرات
             try
             {
                 await _context.SaveChangesAsync();
@@ -558,10 +552,10 @@ namespace DeenProof.Api.Controllers
             }
             catch (DbUpdateException ex)
             {
-                // يمكنك تسجيل الخطأ هنا في نظام تسجيل حقيقي إذا أردت
                 return StatusCode(500, new { message = "An error occurred while updating the database.", details = ex.Message });
             }
         }
+
         // DoubtsController.cs
 
         [HttpGet("my-library")]
