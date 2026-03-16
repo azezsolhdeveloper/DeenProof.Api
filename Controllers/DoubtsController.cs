@@ -425,41 +425,43 @@ namespace DeenProof.Api.Controllers
         // DoubtsController.cs -> AddCommentToDoubt
 
         [HttpPost("{doubtId}/comments")]
-        // --- ✅✅✅ بداية الإصلاح الحاسم ✅✅✅ ---
         [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
-        // --- نهاية الإصلاح ---
         public async Task<ActionResult<object>> AddCommentToDoubt(int doubtId, [FromBody] AddCommentDto commentDto)
         {
-            // 1. جلب كيان الشبهة الكامل
-            var doubt = await _context.Doubts.FindAsync(doubtId);
-            if (doubt == null)
+            // --- ✅✅✅ بداية الكود التشخيصي ✅✅✅ ---
+
+            // 1. احصل على القيمة الخام من التوكن
+            var rawNameIdentifier = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            // 2. قم بتسجيلها في الكونسول لنراها في سجلات الخادم
+            Console.WriteLine($"----- DIAGNOSTIC: RAW NameIdentifier FROM TOKEN: '{rawNameIdentifier}' -----");
+
+            // --- نهاية الكود التشخيصي ---
+
+            var doubtExists = await _context.Doubts.AnyAsync(d => d.Id == doubtId);
+            if (!doubtExists)
             {
                 return NotFound("Doubt not found.");
             }
 
-            // 2. جلب هوية المستخدم الحالي
-            var authorIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (!int.TryParse(authorIdStr, out var authorId))
+            if (!int.TryParse(rawNameIdentifier, out var authorId))
             {
-                // هذا لن يحدث الآن لأن [Authorize] سيمنع المستخدمين غير المسجلين
-                return Unauthorized("Invalid user token.");
+                // 3. إذا فشل التحويل، أرجع خطأً واضحًا جدًا
+                return BadRequest($"Failed to parse NameIdentifier. The value from token was: '{rawNameIdentifier}'. It is not a valid integer User ID.");
             }
 
-            // 3. إنشاء كيان التعليق الجديد
             var newComment = new Comment
             {
                 Content = commentDto.Content,
                 Section = commentDto.Section,
                 IsInternal = true,
-                CreatedAt = DateTime.UtcNow,
-                DoubtId = doubtId,   // <-- تعيين الـ ID هنا آمن
-                AuthorId = authorId  // <-- تعيين الـ ID هنا آمن
+                DoubtId = doubtId,
+                AuthorId = authorId,
+                CreatedAt = DateTime.UtcNow
             };
 
-            // 4. أضف التعليق الجديد إلى السياق
             _context.Comments.Add(newComment);
 
-            // 5. احفظ التغييرات
             try
             {
                 await _context.SaveChangesAsync();
@@ -470,14 +472,13 @@ namespace DeenProof.Api.Controllers
                 return StatusCode(500, new { message = "Failed to save comment.", details = innerExceptionMessage });
             }
 
-            // 6. أرجع البيانات
             var result = new
             {
                 newComment.Id,
                 newComment.Content,
                 newComment.Section,
                 newComment.CreatedAt,
-                AuthorName = User.FindFirstValue(ClaimTypes.Name) // استخدم الاسم من التوكن مباشرة
+                AuthorName = User.FindFirstValue(ClaimTypes.Name)
             };
 
             return Ok(result);
