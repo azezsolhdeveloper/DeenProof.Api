@@ -428,26 +428,28 @@ namespace DeenProof.Api.Controllers
         [Authorize(Roles = "Reviewer, Admin, SuperAdmin")]
         public async Task<ActionResult<object>> AddCommentToDoubt(int doubtId, [FromBody] AddCommentDto commentDto)
         {
-            // --- ✅✅✅ بداية الكود التشخيصي ✅✅✅ ---
+            // --- ✅✅✅ بداية الكود التشخيصي الفائق ✅✅✅ ---
 
-            // 1. احصل على القيمة الخام من التوكن
-            var rawNameIdentifier = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-            // 2. قم بتسجيلها في الكونسول لنراها في سجلات الخادم
-            Console.WriteLine($"----- DIAGNOSTIC: RAW NameIdentifier FROM TOKEN: '{rawNameIdentifier}' -----");
+            Console.WriteLine("----- DIAGNOSTIC: ALL CLAIMS FROM TOKEN -----");
+            foreach (var claim in User.Claims)
+            {
+                Console.WriteLine($"Claim Type: {claim.Type}, Claim Value: {claim.Value}");
+            }
+            Console.WriteLine("-------------------------------------------");
 
             // --- نهاية الكود التشخيصي ---
 
+            // استمر في الكود القديم لنرى ما إذا كان سيفشل مرة أخرى
             var doubtExists = await _context.Doubts.AnyAsync(d => d.Id == doubtId);
             if (!doubtExists)
             {
                 return NotFound("Doubt not found.");
             }
 
-            if (!int.TryParse(rawNameIdentifier, out var authorId))
+            var authorIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(authorIdStr, out var authorId))
             {
-                // 3. إذا فشل التحويل، أرجع خطأً واضحًا جدًا
-                return BadRequest($"Failed to parse NameIdentifier. The value from token was: '{rawNameIdentifier}'. It is not a valid integer User ID.");
+                return BadRequest($"Failed to parse NameIdentifier. The value from token was: '{authorIdStr}'. It is not a valid integer User ID.");
             }
 
             var newComment = new Comment
