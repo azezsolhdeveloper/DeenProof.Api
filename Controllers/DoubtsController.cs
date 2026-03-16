@@ -420,43 +420,66 @@ namespace DeenProof.Api.Controllers
             await _context.SaveChangesAsync();
             return NoContent();
         }
+        // DoubtsController.cs -> AddCommentToDoubt
 
         [HttpPost("{doubtId}/comments")]
         public async Task<ActionResult<object>> AddCommentToDoubt(int doubtId, [FromBody] AddCommentDto commentDto)
         {
-            var doubtExists = await _context.Doubts.AnyAsync(d => d.Id == doubtId);
-            if (!doubtExists)
+            // 1. جلب كيان الشبهة الكامل، وليس مجرد التحقق من وجوده
+            var doubt = await _context.Doubts.FindAsync(doubtId);
+            if (doubt == null)
             {
                 return NotFound("Doubt not found.");
             }
 
+            // 2. جلب هوية المستخدم الحالي
             var authorIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(authorIdStr, out var authorId))
             {
                 return Unauthorized("Invalid user token.");
             }
 
+            // 3. جلب كيان المستخدم الكامل (هذا هو الجزء الأكثر أمانًا)
+            var author = await _context.Users.FindAsync(authorId);
+            if (author == null)
+            {
+                return Unauthorized("Author not found in database.");
+            }
+
+            // 4. إنشاء كيان التعليق الجديد وربط الكيانات الكاملة
             var newComment = new Comment
             {
                 Content = commentDto.Content,
-                Section = commentDto.Section, // ✅ تم إضافة حقل القسم
-                IsInternal = true,            // ✅ كل التعليقات الآن داخلية
-                DoubtId = doubtId,
-                AuthorId = authorId,
-                CreatedAt = DateTime.UtcNow
+                Section = commentDto.Section,
+                IsInternal = true,
+                CreatedAt = DateTime.UtcNow,
+                Doubt = doubt,   // <-- اربط كيان الشبهة الكامل
+                Author = author  // <-- اربط كيان المؤلف الكامل
             };
 
+            // 5. أضف التعليق الجديد إلى السياق
             _context.Comments.Add(newComment);
-            await _context.SaveChangesAsync();
 
-            // ✅ نرجع كائنًا يتطابق تمامًا مع ما تتوقعه الواجهة الأمامية
+            // 6. احفظ التغييرات
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                // يمكنك ترك الكود التشخيصي هنا للأمان
+                var innerExceptionMessage = ex.InnerException?.Message ?? ex.Message;
+                return StatusCode(500, new { message = "Failed to save comment.", details = innerExceptionMessage });
+            }
+
+            // 7. أرجع البيانات كما كانت
             var result = new
             {
                 newComment.Id,
                 newComment.Content,
                 newComment.Section,
                 newComment.CreatedAt,
-                AuthorName = User.FindFirstValue(ClaimTypes.Name) // نرسل اسم المستخدم الحالي مباشرة
+                AuthorName = author.Name // استخدم الاسم من الكيان الذي تم جلبه
             };
 
             return Ok(result);
@@ -469,6 +492,7 @@ namespace DeenProof.Api.Controllers
             [Required]
             public string NewStatus { get; set; }
         }
+
         [HttpPost("{id}/status")]
         [Authorize(Roles = "Researcher, Reviewer, Admin, SuperAdmin")]
         public async Task<IActionResult> UpdateDoubtStatus(int id, [FromBody] UpdateStatusRequest request)
@@ -478,8 +502,10 @@ namespace DeenProof.Api.Controllers
                 return BadRequest(ModelState);
             }
 
+            // 1. جلب الشبهة مع كل علاقاتها لمنع فقدان البيانات (الحل الأول)
             var doubt = await _context.Doubts
-                .Include(d => d.Reviewer)
+                .Include(d => d.DetailedRebuttal)
+                .Include(d => d.MainSources)
                 .FirstOrDefaultAsync(d => d.Id == id);
 
             if (doubt == null)
@@ -500,6 +526,7 @@ namespace DeenProof.Api.Controllers
             }
             bool isOwner = doubt.AuthorId == currentUserId;
 
+            // منطق التحقق من الصلاحيات
             switch (newStatusEnum)
             {
                 case DoubtStatus.PendingReview:
@@ -514,7 +541,6 @@ namespace DeenProof.Api.Controllers
                     {
                         return StatusCode(StatusCodes.Status403Forbidden, new { message = "ليس لديك صلاحية طلب تعديل على هذا الرد." });
                     }
-                    doubt.ReviewerId = currentUserId;
                     break;
 
                 case DoubtStatus.Published:
@@ -525,14 +551,16 @@ namespace DeenProof.Api.Controllers
                     break;
             }
 
+            // 2. منطق تسجيل المراجع الصحيح (الحل الثاني)
             if (newStatusEnum == DoubtStatus.PendingApproval)
             {
-                if (currentUserRole == "Reviewer")
+                if (currentUserRole == "Reviewer" && doubt.ReviewerId == null)
                 {
                     doubt.ReviewerId = currentUserId;
                 }
             }
 
+            // تحديث الحالة وتاريخ النشر
             doubt.Status = newStatusEnum;
             doubt.UpdatedAt = DateTime.UtcNow;
             if (newStatusEnum == DoubtStatus.Published && doubt.PublishedAt == null)
@@ -540,6 +568,7 @@ namespace DeenProof.Api.Controllers
                 doubt.PublishedAt = DateTime.UtcNow;
             }
 
+            // حفظ التغييرات
             try
             {
                 await _context.SaveChangesAsync();
@@ -552,10 +581,10 @@ namespace DeenProof.Api.Controllers
             }
             catch (DbUpdateException ex)
             {
+                // يمكنك تسجيل الخطأ هنا في نظام تسجيل حقيقي إذا أردت
                 return StatusCode(500, new { message = "An error occurred while updating the database.", details = ex.Message });
             }
         }
-
         // DoubtsController.cs
 
         [HttpGet("my-library")]
