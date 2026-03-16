@@ -67,7 +67,21 @@ namespace DeenProof.Api.Controllers
             else if (currentUserRole == "Reviewer")
             {
                 // المراجع يرى الشبهات التي تنتظر المراجعة أو الموافقة (والتي لم يكتبها هو)
-                myTasksQuery = myTasksQuery.Where(d => (d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval) && d.AuthorId != currentUserId);
+                myTasksQuery = myTasksQuery.Where(d =>
+                    (d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval)
+                    && d.AuthorId != currentUserId
+                );
+
+                // **ثم**، طبق فلتر القفل على هذه النتائج
+                myTasksQuery = myTasksQuery.Where(d =>
+                    // أرني المهمة فقط إذا كانت...
+                    // (أ) غير مقفولة على الإطلاق
+                    d.LockedByReviewerId == null ||
+                    // (ب) أو مقفولة من قبلي أنا شخصيًا
+                    d.LockedByReviewerId == currentUserId ||
+                    // (ج) أو أن القفل قديم جدًا (انتهت صلاحيته)
+                    (d.LockedAt.HasValue && d.LockedAt.Value.AddMinutes(60) < DateTime.UtcNow)
+                );
             }
             else if (currentUserRole == "Admin" || currentUserRole == "SuperAdmin")
             {
