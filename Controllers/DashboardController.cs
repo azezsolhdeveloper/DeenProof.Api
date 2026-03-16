@@ -68,9 +68,9 @@ namespace DeenProof.Api.Controllers
             {
                 // المراجع يرى الشبهات التي تنتظر المراجعة أو الموافقة (والتي لم يكتبها هو)
                 myTasksQuery = myTasksQuery.Where(d =>
-                    (d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval)
-                    && d.AuthorId != currentUserId
-                );
+        d.Status == DoubtStatus.PendingReview
+        && d.AuthorId != currentUserId
+    );
 
                 // **ثم**، طبق فلتر القفل على هذه النتائج
                 myTasksQuery = myTasksQuery.Where(d =>
@@ -86,7 +86,7 @@ namespace DeenProof.Api.Controllers
             else if (currentUserRole == "Admin" || currentUserRole == "SuperAdmin")
             {
                 // المدير يرى فقط الشبهات التي تنتظر موافقته النهائية للنشر
-                myTasksQuery = myTasksQuery.Where(d => d.Status == DoubtStatus.PendingApproval);
+                myTasksQuery = myTasksQuery.Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval);
             }
             else
             {

@@ -88,14 +88,17 @@ namespace DeenProof.Api.Controllers
 
             // 2. الاستعلام الأساسي لجلب مهام المراجعة والموافقة
             var query = _context.Doubts
-                .AsNoTracking()
-                .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval);
+      .AsNoTracking()
+      .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval);
 
-            // --- ✅✅✅ 3. تطبيق منطق الفلترة الحاسم (فقط إذا لم يكن المستخدم مديرًا) ✅✅✅ ---
+            // 2. لكننا نطبق فلاتر إضافية **فقط** على المراجع العادي
             if (!isAdminOrSuperAdmin)
             {
-                query = query.Where(d =>
+                // ✅ الفلتر الأول: المراجع يرى فقط PendingReview
+                query = query.Where(d => d.Status == DoubtStatus.PendingReview);
 
+                // ✅ الفلتر الثاني: منطق القفل (يبقى كما هو)
+                query = query.Where(d =>
                     d.LockedByReviewerId == null ||
                     d.LockedByReviewerId == currentUserId ||
                     (d.LockedAt.HasValue && d.LockedAt.Value.AddMinutes(60) < DateTime.UtcNow)
