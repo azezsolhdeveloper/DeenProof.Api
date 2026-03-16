@@ -85,8 +85,8 @@ namespace DeenProof.Api.Controllers
             }
             else if (currentUserRole == "Admin" || currentUserRole == "SuperAdmin")
             {
-                // المدير يرى فقط الشبهات التي تنتظر موافقته النهائية للنشر
-                myTasksQuery = myTasksQuery.Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval);
+                // ✅ المدير يرى كل المهام التي تنتظر إجراء
+                myTasksQuery = myTasksQuery.Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval || d.Status == DoubtStatus.NeedsRevision);
             }
             else
             {

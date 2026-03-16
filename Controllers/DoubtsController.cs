@@ -91,10 +91,10 @@ namespace DeenProof.Api.Controllers
 
             if (isAdminOrSuperAdmin)
             {
-                // 1. المدير يرى كل شيء كالعادة
+                // ✅ المدير يرى كل شيء: ما ينتظر المراجعة، وما ينتظر موافقته، وما يحتاج تعديل
                 query = _context.Doubts
                     .AsNoTracking()
-                    .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval);
+                    .Where(d => d.Status == DoubtStatus.PendingReview || d.Status == DoubtStatus.PendingApproval || d.Status == DoubtStatus.NeedsRevision);
             }
             else // إذا كان المستخدم مراجعًا عاديًا
             {
@@ -559,8 +559,10 @@ namespace DeenProof.Api.Controllers
                 return StatusCode(500, new { message = "An error occurred while updating the database.", details = ex.Message });
             }
         }
+        // DoubtsController.cs
+
         [HttpGet("my-library")]
-        [Authorize(Roles = "Researcher")] // ✅ مخصصة للباحثين فقط
+        [Authorize(Roles = "Researcher")]
         public async Task<ActionResult<IEnumerable<object>>> GetMyLibrary()
         {
             var currentUserIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -569,24 +571,27 @@ namespace DeenProof.Api.Controllers
                 return Unauthorized("Invalid user token.");
             }
 
+            // --- ✅✅✅ بداية الإصلاح الحاسم ✅✅✅ ---
             var doubts = await _context.Doubts
                 .AsNoTracking()
-                // 1. الشرط الوحيد هو أن يكون الباحث هو المؤلف
+                // الباحث يرى كل أعماله، بغض النظر عن حالتها
                 .Where(d => d.AuthorId == currentUserId)
                 .Include(d => d.Author)
-                .OrderByDescending(d => d.UpdatedAt) // 2. نرتب حسب آخر تحديث
+                .OrderByDescending(d => d.UpdatedAt)
                 .Select(d => new
                 {
                     d.Id,
                     d.TitleAr,
-                    d.TitleEn, // ✅ من الجيد إرسال العنوان الإنجليزي أيضًا
-                    Status = d.Status.ToString(),
+                    d.TitleEn,
+                    Status = d.Status.ToString(), // الحالة مهمة جدًا للواجهة الأمامية
                     d.UpdatedAt
                 })
                 .ToListAsync();
+            // --- نهاية الإصلاح ---
 
             return Ok(doubts);
         }
+
         [HttpGet("search-all")]
         [Authorize(Roles = "Admin, SuperAdmin, Reviewer")]
 public async Task<IActionResult> SearchAllDoubts(
